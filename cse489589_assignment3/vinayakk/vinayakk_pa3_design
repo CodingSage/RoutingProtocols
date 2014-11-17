@@ -1,0 +1,1 @@
+1. Update packet has been defined as a struct, which is enclosed in a helper class which has various methods to do basic operations on the packet structure fields
