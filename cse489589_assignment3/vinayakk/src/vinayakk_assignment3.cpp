@@ -45,7 +45,7 @@ void parse_topology(string path, map<int, ServerDetails>* network,
 	{
 		int sid, sport;
 		string sip;
-		file >> sid >> sip;
+		file >> sid >> sip >> sport;
 		ServerDetails server(sip, sport);
 		pair<int, ServerDetails> info(sid, server);
 		network->insert(info);
@@ -53,12 +53,11 @@ void parse_topology(string path, map<int, ServerDetails>* network,
 
 	for (int i = 0; i < no_edges; ++i)
 	{
-		//TODO check if first is not current server
 		int id1, id2, cost;
 		*current_server = id1;
 		file >> id1 >> id2 >> cost;
-		map<int, ServerDetails>::iterator it = network->find(id2);
-		//it->second.set_cost(cost);
+		map<int, ServerDetails>::iterator server = network->find(id1);
+		server->second.add_neighbour(id2, cost);
 	}
 }
 

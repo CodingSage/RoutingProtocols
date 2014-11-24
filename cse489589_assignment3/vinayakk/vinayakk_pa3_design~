@@ -69,3 +69,4 @@ server1 details
 -The time line is considered to be divided into many time durations of T which is the timeout for the server itself, at which it sends its distance vector updates to its neighbours.
 -Once the servers timeout occurs and no updates were received from the neighbours then we decrement the packet limit for the particular host.
 -When the limit goes to zero we mark the cost as Inf
+-

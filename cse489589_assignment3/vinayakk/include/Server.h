@@ -15,16 +15,16 @@
 #include <algorithm>
 #include <iterator>
 #include <sstream>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <unistd.h>
-#include <netdb.h>
+#include <iostream>
+#include <stdio.h>
 
+#include "SocketLibs.h"
 #include "ServerDetails.h"
 #include "DistanceVector.h"
 #include "Packet.h"
+#include "logger.h"
+
+#define INFINITE_COST UINT16_MAX
 
 using namespace std;
 
@@ -34,16 +34,20 @@ class Server
 	int id;
 	string ip;
 	map<int, ServerDetails> network;
-	DistanceVector cost_table;
 	int fdmax;
 	fd_set master;
 	int updates_received;
-	void receive_data(int port);
-	void send_data(int port, void* data, int size);
+	void receive_data(int fd);
+	void send_data(int server_id);
 	void command_execute(string cmd);
 	string command_map(vector<string> cmd_list);
-	Pkt generate_packet();
+	void update_cost(int id1, int id2, int cost);
+	void calculate_distance_vector();
+	Packet generate_packet();
+	void check_updates();
+	void send_updates();
 	void print(string line);
+	string int_to_str(int num);
 public:
 	Server();
 	Server(int id, map<int, ServerDetails> network);

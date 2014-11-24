@@ -21,10 +21,66 @@ Server::Server(int id, map<int, ServerDetails> network)
 	this->network = network;
 	map<int, ServerDetails>::iterator i = network.find(id);
 	port = i->second.get_port();
+	this->updates_received = 0;
 }
 
-void Server::receive_data(int port)
+void Server::receive_data(int fd)
 {
+	updates_received++;
+	Pkt buffer;
+	sockaddr_storage addr;
+	socklen_t len = sizeof(addr);
+	int bytecount = recvfrom(fd, &buffer, sizeof(buffer), 0, (sockaddr*) &addr,
+			&len);
+	Packet packet(buffer, network);
+	int senders_id = 0;
+	for (map<int, ServerDetails>::iterator i = network.begin();
+			i != network.end(); i++)
+	{
+		if (i->second.get_ip() == packet.get_sender_ip())
+		{
+			senders_id = i->first;
+			i->second.set_update_received(true);
+			break;
+		}
+	}
+	map<int, ServerDetails>::iterator i = network.find(senders_id);
+	if (i == network.end())
+	{
+		ServerDetails detail(packet.get_sender_ip(), packet.get_sender_port(),
+				true);
+		detail.set_distance_vector(packet.get_distance_vector());
+		pair<int, ServerDetails> new_server(senders_id, detail);
+		network.insert(new_server);
+	}
+	else
+	{
+		i->second.set_distance_vector(packet.get_distance_vector());
+	}
+	calculate_distance_vector();
+}
+
+void Server::calculate_distance_vector()
+{
+	DistanceVector server =
+			network.find(this->id)->second.get_distance_vector();
+	for (map<int, ServerDetails>::iterator i = network.begin();
+			i != network.end(); i++)
+	{
+		if (!i->second.is_neighbour())
+			continue;
+		int min = INFINITE_COST;
+		for (map<int, ServerDetails>::iterator j = network.begin();
+				j != network.end(); j++)
+		{
+			if (j->first == this->id)
+				continue;
+			int cost = j->second.get_cost(this->id)
+					+ j->second.get_cost(i->first);
+			if (cost < min)
+				server.add_cost(i->first, cost, j->first);
+		}
+	}
 }
 
 void Server::command_execute(string cmd)
@@ -55,17 +111,22 @@ string Server::command_map(vector<string> cmd_list)
 	{
 		int id1 = atoi(cmd_list[1].c_str());
 		int id2 = atoi(cmd_list[2].c_str());
-		int cost =
-				cmd_list[3] == "inf" ? UINT16_MAX : atoi(cmd_list[3].c_str());
-		cost_table.update_cost(id1, id2, cost);
-		//TODO generate packet
+		int cost = cmd_list[3] == "inf" ?
+		INFINITE_COST :
+											atoi(cmd_list[3].c_str());
+		update_cost(id1, id2, cost);
+		Packet packet = generate_packet();
 		//TODO send data to specified servers
 		return "SUCCESS";
 	}
 	if (cmd == "step")
 	{
-		//TODO generate packet
-		//TODO send routing update to neighbors
+		for (map<int, ServerDetails>::iterator i = network.begin();
+				i != network.end(); i++)
+		{
+			if (i->second.is_neighbour())
+				send_data(i->first);
+		}
 		return "SUCCESS";
 	}
 	if (cmd == "packets")
@@ -76,25 +137,115 @@ string Server::command_map(vector<string> cmd_list)
 	}
 	if (cmd == "display")
 	{
-		return "SUCCESS";
+		ServerDetails detail = network.find(id)->second;
+		vector<int> hosts = detail.get_hosts();
+		//TODO check sort order
+		sort(hosts.begin(), hosts.end());
+		for (int i = 0; i < hosts.size(); i++)
+		{
+			printf("%­15d%­15d%­15d\n", hosts[i], detail.get_hostid(hosts[i]),
+					detail.get_cost(hosts[i]));
+			return "SUCCESS";
+		}
 	}
 	if (cmd == "disable" && cmd_list.size() == 2)
 	{
-		return "SUCCESS";
+		int cmdid = atoi(cmd_list[1].c_str());
+		map<int, ServerDetails>::iterator server = network.find(id);
+		for (map<int, ServerDetails>::iterator i = network.begin();
+				i != network.end(); i++)
+		{
+			if (i->second.is_neighbour() && i->first == cmdid)
+			{
+				//server->second.add_cost(i->first, INFINITE_COST);
+				server->second.set_neighbour(false);
+				return "SUCCESS";
+			}
+		}
+		return "";
 	}
 	if (cmd == "crash")
 	{
-		while(true){}
+		while (true)
+		{
+		}
 		return "";
 	}
 	if (cmd == "dump")
 	{
-		void* pkt = &generate_packet();
-		int size = sizeof(*pkt);
-		cse4589_dump_packet(pkt, size);
+		Pkt pkt = generate_packet().get_packet(network);
+		int size = sizeof(pkt);
+		cse4589_dump_packet(&pkt, size);
 		return "SUCCESS";
 	}
 	return "Invalid command or arguments";
+}
+
+void Server::send_data(int server_id)
+{
+	ServerDetails details = network.find(id)->second;
+	Packet packet(details.get_ip(), details.get_port(),
+			details.get_distance_vector());
+
+	addrinfo hint, *servinfo, *p;
+	memset(&hint, 0, sizeof(hint));
+	hint.ai_family = AF_INET;
+	hint.ai_socktype = SOCK_DGRAM;
+	string port = int_to_str(details.get_port());
+	getaddrinfo(NULL, port.c_str(), &hint, &servinfo);
+	int sockfd;
+	for (p = servinfo; p != NULL; p = p->ai_next)
+	{
+		if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol))
+				== -1)
+		{
+			perror("socket");
+			continue;
+		}
+		if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1)
+		{
+			close(sockfd);
+			perror("connect");
+			continue;
+		}
+		break;
+	}
+	Pkt pkt = packet.get_packet(network);
+	sendto(sockfd, &pkt, sizeof(pkt), 0, (sockaddr*) servinfo,
+			sizeof(*servinfo));
+}
+
+void Server::update_cost(int id1, int id2, int cost)
+{
+	DistanceVector vector = network.find(id1)->second.get_distance_vector();
+	vector.update_cost(id2, cost);
+}
+
+Packet Server::generate_packet()
+{
+	ServerDetails server = network.find(id)->second;
+	Packet packet(server.get_ip(), server.get_port(),
+			server.get_distance_vector());
+	return packet;
+}
+
+void Server::send_updates()
+{
+	for (map<int, ServerDetails>::iterator i = network.begin();
+			i != network.end(); i++)
+	{
+		if (i->first != this->id)
+			continue;
+		if (i->second.update_recieved())
+		{
+			i->second.set_timeout_count(3);
+			i->second.set_update_received(false);
+		}
+		else
+			i->second.set_timeout_count(i->second.get_timeout_count() - 1);
+		if (i->second.is_neighbour())
+			send_data(i->first);
+	}
 }
 
 void Server::start()
@@ -106,10 +257,9 @@ void Server::start()
 	hints.ai_socktype = SOCK_DGRAM;
 	hints.ai_socktype = AI_PASSIVE;
 
-	if ((status = getaddrinfo(ip.c_str(), string(port).c_str(), &hints, &res))
-			!= 0)
+	if ((status = getaddrinfo(ip.c_str(), int_to_str(port).c_str(), &hints, &res)) != 0)
 	{
-		print("Error getting address information: " + gai_strerror(status));
+		print("Error getting address information: " + string(gai_strerror(status)));
 		exit(0);
 	}
 	for (p = res; p != NULL; p = p->ai_next)
@@ -129,7 +279,7 @@ void Server::start()
 		}
 		break;
 	}
-//TODO check the max no. of connections
+	//TODO check the max no. of connections
 	listen(sockfd, 2);
 	freeaddrinfo(res);
 	fd_set read_fds;
@@ -145,7 +295,10 @@ void Server::start()
 		read_fds = master;
 		fflush(stdout);
 		//TODO check timeout for select
-		if (select(fdmax + 1, &read_fds, NULL, NULL, NULL) == -1)
+		int t = select(fdmax + 1, &read_fds, NULL, NULL, NULL);
+		if (t == 0)
+			send_updates();
+		if (t == -1)
 		{
 			perror("select");
 			exit(0);
@@ -175,4 +328,11 @@ void Server::start()
 void Server::print(string line)
 {
 	cout << line << endl;
+}
+
+string Server::int_to_str(int num)
+{
+	stringstream s;
+	s << num;
+	return s.str();
 }

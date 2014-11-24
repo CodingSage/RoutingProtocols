@@ -8,7 +8,16 @@
 #ifndef PACKET_H_
 #define PACKET_H_
 
+#include <map>
+#include <vector>
+#include <string>
 #include <stdint.h>
+
+#include "DistanceVector.h"
+#include "ServerDetails.h"
+#include "SocketLibs.h"
+
+using namespace std;
 
 struct UpdateField
 {
@@ -23,16 +32,27 @@ struct Pkt
 	uint16_t fields_updated;
 	uint16_t port;
 	uint32_t ip;
-	UpdateField** update_fields;
+	UpdateField* update_fields;
 };
 
 class Packet
 {
-	Pkt packet;
+	int id;
+	string ip;
+	int port;
+	DistanceVector vector;
 public:
 	Packet();
+	Packet(string ip, int port);
+	Packet(string ip, int port, DistanceVector vector);
+	Packet(Pkt packet, map<int, ServerDetails> network);
 	virtual ~Packet();
-	Pkt get_packet();
+	Pkt get_packet(map<int, ServerDetails> network);
+	int get_sender_id();
+	string get_sender_ip();
+	int get_sender_port();
+	void add_updated_fields(DistanceVector vector);
+	DistanceVector get_distance_vector();
 };
 
 #endif /* PACKET_H_ */
