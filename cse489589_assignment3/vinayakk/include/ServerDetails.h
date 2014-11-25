@@ -12,6 +12,7 @@
 #include <stdint.h>
 
 #include "DistanceVector.h"
+#include "logger.h"
 
 class ServerDetails
 {

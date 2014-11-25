@@ -125,5 +125,9 @@ void ServerDetails::set_timeout_count(int timeout)
 		return;
 	timeout_count = timeout;
 	if(timeout_count == 0)
+	{
 		neighbour = false;
+		string err = "Server " + ip + "timed out";
+		cse4589_print_and_log((char*)err.c_str());
+	}
 }

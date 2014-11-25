@@ -38,26 +38,38 @@ void parse_topology(string path, map<int, ServerDetails>* network,
 {
 	ifstream file;
 	file.open(path.c_str());
+	string line;
 	int no_servers, no_edges;
-	file >> no_servers;
-	file >> no_edges;
-	for (int i = 0; i < no_servers; ++i)
+	getline(file, line);
+	istringstream iss1(line);
+	iss1 >> no_servers;
+	getline(file, line);
+	istringstream iss2(line);
+	iss2 >> no_edges;
+	for (int i = 0; i < no_servers; i++)
 	{
+		getline(file, line);
+		if (line.find_first_not_of(' ') == string::npos || line.size() == 0)
+			continue;
+		istringstream iss(line);
 		int sid, sport;
 		string sip;
-		file >> sid >> sip >> sport;
+		iss >> sid >> sip >> sport;
 		ServerDetails server(sip, sport);
 		pair<int, ServerDetails> info(sid, server);
 		network->insert(info);
 	}
 
-	for (int i = 0; i < no_edges; ++i)
+	for (int i = 0; i < no_edges; i++)
 	{
+		getline(file, line);
+		istringstream iss(line);
 		int id1, id2, cost;
+		iss >> id1 >> id2 >> cost;
 		*current_server = id1;
-		file >> id1 >> id2 >> cost;
 		map<int, ServerDetails>::iterator server = network->find(id1);
 		server->second.add_neighbour(id2, cost);
+		server->second.set_neighbour(true);
 	}
 }
 
@@ -78,9 +90,10 @@ int main(int argc, char **argv)
 	fclose(fopen(DUMPFILE, "wb"));
 
 	/*Start Here*/
+	cse4589_print_and_log("Starting server");
 	//TODO validations
 	string topology_path = "";
-	long int update_time = 0;
+	int update_time = 0;
 	for (int i = 1; i < argc; ++i)
 	{
 		string arg(argv[i]);
@@ -94,10 +107,12 @@ int main(int argc, char **argv)
 		cse4589_print_and_log((char*) "Invalid arguments");
 		exit(0);
 	}
+	cse4589_print_and_log("Reading topology file");
 	map<int, ServerDetails> network;
 	int current_server;
 	parse_topology(topology_path, &network, &current_server);
-	Server server(current_server, network);
+	cse4589_print_and_log("Successfully read topology file");
+	Server server(current_server, network, update_time);
 	server.start();
 	return 0;
 }

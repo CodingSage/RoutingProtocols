@@ -59,3 +59,16 @@ vector<int> DistanceVector::get_all_hosts()
 		hosts.push_back(i->first);
 	return hosts;
 }
+
+string DistanceVector::to_string()
+{
+	string str = "";
+	stringstream s1, s2;
+	for(map<int, int>::iterator i = cost_map.begin(); i != cost_map.end(); i++)
+	{
+		s1 << i->second;
+		s2 << i->first;
+		str += s2.str() + ":" + s1.str() + "\n";
+	}
+	return str;
+}

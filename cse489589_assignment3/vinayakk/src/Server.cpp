@@ -15,12 +15,14 @@ Server::~Server()
 {
 }
 
-Server::Server(int id, map<int, ServerDetails> network)
+Server::Server(int id, map<int, ServerDetails> network, int timeout)
 {
 	this->id = id;
 	this->network = network;
+	this->timeout = timeout;
 	map<int, ServerDetails>::iterator i = network.find(id);
 	port = i->second.get_port();
+	ip = i->second.get_ip();
 	this->updates_received = 0;
 }
 
@@ -57,6 +59,9 @@ void Server::receive_data(int fd)
 	{
 		i->second.set_distance_vector(packet.get_distance_vector());
 	}
+	string message = "Update received by " + int_to_str(this->id)
+			+"from server " + int_to_str(senders_id);
+	cse4589_print_and_log((char*)message.c_str());
 	calculate_distance_vector();
 }
 
@@ -81,6 +86,9 @@ void Server::calculate_distance_vector()
 				server.add_cost(i->first, cost, j->first);
 		}
 	}
+	string message = "Updated distance vector for server " + int_to_str(id)
+			+ server.to_string();
+	cse4589_print_and_log((char*)message.c_str());
 }
 
 void Server::command_execute(string cmd)
@@ -112,8 +120,7 @@ string Server::command_map(vector<string> cmd_list)
 		int id1 = atoi(cmd_list[1].c_str());
 		int id2 = atoi(cmd_list[2].c_str());
 		int cost = cmd_list[3] == "inf" ?
-		INFINITE_COST :
-											atoi(cmd_list[3].c_str());
+				INFINITE_COST : atoi(cmd_list[3].c_str());
 		update_cost(id1, id2, cost);
 		Packet packet = generate_packet();
 		//TODO send data to specified servers
@@ -186,13 +193,15 @@ void Server::send_data(int server_id)
 	ServerDetails details = network.find(id)->second;
 	Packet packet(details.get_ip(), details.get_port(),
 			details.get_distance_vector());
+	ServerDetails server_details = network.find(server_id)->second;
 
 	addrinfo hint, *servinfo, *p;
 	memset(&hint, 0, sizeof(hint));
 	hint.ai_family = AF_INET;
 	hint.ai_socktype = SOCK_DGRAM;
-	string port = int_to_str(details.get_port());
-	getaddrinfo(NULL, port.c_str(), &hint, &servinfo);
+	string port = int_to_str(server_details.get_port());
+	//TODO maybe error handling
+	getaddrinfo(server_details.get_ip().c_str(), port.c_str(), &hint, &servinfo);
 	int sockfd;
 	for (p = servinfo; p != NULL; p = p->ai_next)
 	{
@@ -213,6 +222,12 @@ void Server::send_data(int server_id)
 	Pkt pkt = packet.get_packet(network);
 	sendto(sockfd, &pkt, sizeof(pkt), 0, (sockaddr*) servinfo,
 			sizeof(*servinfo));
+	freeaddrinfo(servinfo);
+	close(sockfd);
+	string message = "Sending update to " + int_to_str(server_id)
+			+ " from server " + int_to_str(id)
+			+ details.get_distance_vector().to_string();
+	cse4589_print_and_log((char*)message.c_str());
 }
 
 void Server::update_cost(int id1, int id2, int cost)
@@ -259,7 +274,8 @@ void Server::start()
 
 	if ((status = getaddrinfo(ip.c_str(), int_to_str(port).c_str(), &hints, &res)) != 0)
 	{
-		print("Error getting address information: " + string(gai_strerror(status)));
+		string err("Error getting address information: " + string(gai_strerror(status)));
+		cse4589_print_and_log((char*)err.c_str());
 		exit(0);
 	}
 	for (p = res; p != NULL; p = p->ai_next)
@@ -294,8 +310,10 @@ void Server::start()
 	{
 		read_fds = master;
 		fflush(stdout);
-		//TODO check timeout for select
-		int t = select(fdmax + 1, &read_fds, NULL, NULL, NULL);
+		timeval tv;
+		tv.tv_sec = timeout;
+		tv.tv_usec = 0;
+		int t = select(fdmax + 1, &read_fds, NULL, NULL, &tv);
 		if (t == 0)
 			send_updates();
 		if (t == -1)

@@ -10,6 +10,8 @@
 
 #include <map>
 #include <vector>
+#include <sstream>
+#include <string>
 #include <stdint.h>
 
 #define INFINITE_COST UINT16_MAX
@@ -29,6 +31,7 @@ public:
 	int get_cost(int id);
 	int get_hop_id(int id);
 	vector<int> get_all_hosts();
+	string to_string();
 };
 
 #endif /* DISTANCEVECTOR_H_ */

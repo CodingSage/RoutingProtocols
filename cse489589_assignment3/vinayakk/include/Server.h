@@ -33,6 +33,7 @@ class Server
 	int port;
 	int id;
 	string ip;
+	int timeout;
 	map<int, ServerDetails> network;
 	int fdmax;
 	fd_set master;
@@ -50,7 +51,7 @@ class Server
 	string int_to_str(int num);
 public:
 	Server();
-	Server(int id, map<int, ServerDetails> network);
+	Server(int id, map<int, ServerDetails> network, int timeout);
 	virtual ~Server();
 	void start();
 };
