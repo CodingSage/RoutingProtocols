@@ -69,7 +69,7 @@ void parse_topology(string path, map<int, ServerDetails>* network,
 		*current_server = id1;
 		map<int, ServerDetails>::iterator server = network->find(id1);
 		server->second.add_neighbour(id2, cost);
-		server->second.set_neighbour(true);
+		network->find(id2)->second.set_neighbour(true);
 	}
 }
 

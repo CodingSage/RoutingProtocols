@@ -17,13 +17,21 @@ Server::~Server()
 
 Server::Server(int id, map<int, ServerDetails> network, int timeout)
 {
+	fdmax = 0;
 	this->id = id;
 	this->network = network;
 	this->timeout = timeout;
-	map<int, ServerDetails>::iterator i = network.find(id);
+	map<int, ServerDetails>::iterator i = this->network.find(id);
 	port = i->second.get_port();
 	ip = i->second.get_ip();
 	this->updates_received = 0;
+	for (map<int, ServerDetails>::iterator j = network.begin();
+			j != network.end(); j++)
+	{
+		int vcost = id == j->first ? 0 : INFINITE_COST;
+		int vhost = id == j->first ? id : -1;
+		i->second.add_if_not_exits(j->first, vcost, vhost);
+	}
 }
 
 void Server::receive_data(int fd)
@@ -60,8 +68,8 @@ void Server::receive_data(int fd)
 		i->second.set_distance_vector(packet.get_distance_vector());
 	}
 	string message = "Update received by " + int_to_str(this->id)
-			+"from server " + int_to_str(senders_id);
-	cse4589_print_and_log((char*)message.c_str());
+			+ "from server " + int_to_str(senders_id);
+	cse4589_print_and_log((char*) message.c_str());
 	calculate_distance_vector();
 }
 
@@ -88,7 +96,7 @@ void Server::calculate_distance_vector()
 	}
 	string message = "Updated distance vector for server " + int_to_str(id)
 			+ server.to_string();
-	cse4589_print_and_log((char*)message.c_str());
+	cse4589_print_and_log((char*) message.c_str());
 }
 
 void Server::command_execute(string cmd)
@@ -120,7 +128,8 @@ string Server::command_map(vector<string> cmd_list)
 		int id1 = atoi(cmd_list[1].c_str());
 		int id2 = atoi(cmd_list[2].c_str());
 		int cost = cmd_list[3] == "inf" ?
-				INFINITE_COST : atoi(cmd_list[3].c_str());
+		INFINITE_COST :
+											atoi(cmd_list[3].c_str());
 		update_cost(id1, id2, cost);
 		Packet packet = generate_packet();
 		//TODO send data to specified servers
@@ -201,7 +210,8 @@ void Server::send_data(int server_id)
 	hint.ai_socktype = SOCK_DGRAM;
 	string port = int_to_str(server_details.get_port());
 	//TODO maybe error handling
-	getaddrinfo(server_details.get_ip().c_str(), port.c_str(), &hint, &servinfo);
+	getaddrinfo(server_details.get_ip().c_str(), port.c_str(), &hint,
+			&servinfo);
 	int sockfd;
 	for (p = servinfo; p != NULL; p = p->ai_next)
 	{
@@ -220,14 +230,15 @@ void Server::send_data(int server_id)
 		break;
 	}
 	Pkt pkt = packet.get_packet(network);
-	sendto(sockfd, &pkt, sizeof(pkt), 0, (sockaddr*) servinfo,
-			sizeof(*servinfo));
+	int size = sizeof(pkt);// + pkt.fields_updated * sizeof(UpdateField);
+	//cout << "size" << size;
+	sendto(sockfd, &pkt, size, 0, (sockaddr*) servinfo, sizeof(*servinfo));
 	freeaddrinfo(servinfo);
 	close(sockfd);
-	string message = "Sending update to " + int_to_str(server_id)
-			+ " from server " + int_to_str(id)
+	string message = "Sending update " + int_to_str(id) + " -> "
+			+ int_to_str(server_id) + "\n"
 			+ details.get_distance_vector().to_string();
-	cse4589_print_and_log((char*)message.c_str());
+	cse4589_print_and_log((char*) message.c_str());
 }
 
 void Server::update_cost(int id1, int id2, int cost)
@@ -249,7 +260,7 @@ void Server::send_updates()
 	for (map<int, ServerDetails>::iterator i = network.begin();
 			i != network.end(); i++)
 	{
-		if (i->first != this->id)
+		if (i->first == this->id || !i->second.is_neighbour())
 			continue;
 		if (i->second.update_recieved())
 		{
@@ -258,8 +269,7 @@ void Server::send_updates()
 		}
 		else
 			i->second.set_timeout_count(i->second.get_timeout_count() - 1);
-		if (i->second.is_neighbour())
-			send_data(i->first);
+		send_data(i->first);
 	}
 }
 
@@ -272,10 +282,13 @@ void Server::start()
 	hints.ai_socktype = SOCK_DGRAM;
 	hints.ai_socktype = AI_PASSIVE;
 
-	if ((status = getaddrinfo(ip.c_str(), int_to_str(port).c_str(), &hints, &res)) != 0)
+	if ((status = getaddrinfo(ip.c_str(), int_to_str(port).c_str(), &hints,
+			&res)) != 0)
 	{
-		string err("Error getting address information: " + string(gai_strerror(status)));
-		cse4589_print_and_log((char*)err.c_str());
+		string err(
+				"Error getting address information: "
+						+ string(gai_strerror(status)));
+		cse4589_print_and_log((char*) err.c_str());
 		exit(0);
 	}
 	for (p = res; p != NULL; p = p->ai_next)

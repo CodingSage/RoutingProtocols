@@ -32,7 +32,7 @@ struct Pkt
 	uint16_t fields_updated;
 	uint16_t port;
 	uint32_t ip;
-	UpdateField* update_fields;
+	UpdateField update_fields[5];
 };
 
 class Packet

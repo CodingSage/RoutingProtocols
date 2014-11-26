@@ -79,6 +79,12 @@ void ServerDetails::add_cost(int id, int cost, int host_id)
 	cost_table.add_cost(id, cost, host_id);
 }
 
+void ServerDetails::add_if_not_exits(int id, int cost, int host)
+{
+	if(!cost_table.has_host(id))
+		cost_table.add_cost(id, cost, host);
+}
+
 vector<int> ServerDetails::get_hosts()
 {
 	return cost_table.get_all_hosts();

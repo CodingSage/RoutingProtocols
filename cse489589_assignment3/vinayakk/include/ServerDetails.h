@@ -34,6 +34,7 @@ public:
 	void add_neighbour(int id, int cost);
 	void add_cost(int id, int cost);
 	void add_cost(int id, int cost, int host_id);
+	void add_if_not_exits(int id, int cost, int host);
 	vector<int> get_hosts();
 	int get_cost(int id);
 	int get_hostid(int id);

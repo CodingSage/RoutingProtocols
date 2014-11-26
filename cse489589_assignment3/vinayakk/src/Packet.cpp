@@ -64,20 +64,20 @@ Pkt Packet::get_packet(map<int, ServerDetails> network)
 	sockaddr_in addr;
 	inet_pton(AF_INET, ip.c_str(), &(addr.sin_addr));
 	packet.ip = addr.sin_addr.s_addr;
-	packet.port = htonl(port);
+	packet.port = htons(port);
 	std::vector<int> hosts = vector.get_all_hosts();
-	packet.fields_updated = htonl(hosts.size());
-	packet.update_fields = new UpdateField[hosts.size()];
+	packet.fields_updated = htons(hosts.size());
+	//packet.update_fields = new UpdateField[hosts.size()];
 	for (int i = 0; i < hosts.size(); i++)
 	{
 		ServerDetails details = network.find(hosts[i])->second;
 		sockaddr_in add;
 		UpdateField field = packet.update_fields[i];
-		field.cost = htonl(vector.get_cost(hosts[i]));
-		field.update_id = htonl(hosts[i]);
+		field.cost = htons(vector.get_cost(hosts[i]));
+		field.update_id = htons(hosts[i]);
 		inet_pton(AF_INET, details.get_ip().c_str(), &(add.sin_addr));
 		field.update_ip = add.sin_addr.s_addr;
-		field.update_port = htonl(details.get_port());
+		field.update_port = htons(details.get_port());
 	}
 	return packet;
 }
