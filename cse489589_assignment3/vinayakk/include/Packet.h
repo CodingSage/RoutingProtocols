@@ -21,10 +21,11 @@ using namespace std;
 
 struct UpdateField
 {
+	uint32_t update_ip;
+	uint16_t update_port;
+	uint16_t padding;
 	uint16_t update_id;
 	uint16_t cost;
-	uint16_t update_port;
-	uint32_t update_ip;
 };
 
 struct Pkt

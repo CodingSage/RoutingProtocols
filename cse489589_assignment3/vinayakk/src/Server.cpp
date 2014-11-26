@@ -36,18 +36,29 @@ Server::Server(int id, map<int, ServerDetails> network, int timeout)
 
 void Server::receive_data(int fd)
 {
-	updates_received++;
-	Pkt buffer;
+	char buffer[250];
 	sockaddr_storage addr;
-	socklen_t len = sizeof(addr);
-	int bytecount = recvfrom(fd, &buffer, sizeof(buffer), 0, (sockaddr*) &addr,
+	socklen_t len;
+	int bytecount = recvfrom(fd, &buffer, sizeof(buffer), 0, (sockaddr *) &addr,
 			&len);
-	Packet packet(buffer, network);
+	if (bytecount == -1)
+	{
+		perror("recvfrom");
+		return;
+	}
+	string a = "Received update, file descriptor: " + int_to_str(fd);
+	cse4589_print_and_log((char*) a.c_str());
+	updates_received++;
+	Pkt pkt;
+	memcpy(&pkt, buffer, sizeof(pkt));
+	//cse4589_dump_packet(&pkt, sizeof(pkt));
+	Packet packet(pkt, network);
 	int senders_id = 0;
 	for (map<int, ServerDetails>::iterator i = network.begin();
 			i != network.end(); i++)
 	{
-		if (i->second.get_ip() == packet.get_sender_ip())
+		if (i->second.get_ip() == packet.get_sender_ip()
+				&& i->second.get_port() == packet.get_sender_port())
 		{
 			senders_id = i->first;
 			i->second.set_update_received(true);
@@ -68,7 +79,7 @@ void Server::receive_data(int fd)
 		i->second.set_distance_vector(packet.get_distance_vector());
 	}
 	string message = "Update received by " + int_to_str(this->id)
-			+ "from server " + int_to_str(senders_id);
+			+ " from server " + int_to_str(senders_id);
 	cse4589_print_and_log((char*) message.c_str());
 	calculate_distance_vector();
 }
@@ -95,7 +106,7 @@ void Server::calculate_distance_vector()
 		}
 	}
 	string message = "Updated distance vector for server " + int_to_str(id)
-			+ server.to_string();
+			+ " " + server.to_string();
 	cse4589_print_and_log((char*) message.c_str());
 }
 
@@ -109,8 +120,7 @@ void Server::command_execute(string cmd)
 		cmd_list.push_back(str);
 	transform(cmd_list[0].begin(), cmd_list[0].end(), cmd_list[0].begin(),
 			::tolower);
-	print(cmd + ":" + command_map(cmd_list) + "\n");
-	print("> ");
+	print(cmd + ":" + command_map(cmd_list));
 }
 
 string Server::command_map(vector<string> cmd_list)
@@ -199,45 +209,51 @@ string Server::command_map(vector<string> cmd_list)
 
 void Server::send_data(int server_id)
 {
-	ServerDetails details = network.find(id)->second;
-	Packet packet(details.get_ip(), details.get_port(),
-			details.get_distance_vector());
-	ServerDetails server_details = network.find(server_id)->second;
+	ServerDetails self = network.find(id)->second;
+	Packet packet(self.get_ip(), self.get_port(), self.get_distance_vector());
+	ServerDetails send_to = network.find(server_id)->second;
 
-	addrinfo hint, *servinfo, *p;
-	memset(&hint, 0, sizeof(hint));
-	hint.ai_family = AF_INET;
-	hint.ai_socktype = SOCK_DGRAM;
-	string port = int_to_str(server_details.get_port());
-	//TODO maybe error handling
-	getaddrinfo(server_details.get_ip().c_str(), port.c_str(), &hint,
-			&servinfo);
 	int sockfd;
+	struct addrinfo hints, *servinfo, *p;
+	int rv;
+	int numbytes;
+	memset(&hints, 0, sizeof hints);
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_DGRAM;
+	if ((rv = getaddrinfo(send_to.get_ip().c_str(), int_to_str(send_to.get_port()).c_str()
+			, &hints, &servinfo)) != 0)
+	{
+		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+		exit(0);
+	}
 	for (p = servinfo; p != NULL; p = p->ai_next)
 	{
 		if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol))
 				== -1)
 		{
-			perror("socket");
-			continue;
-		}
-		if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1)
-		{
-			close(sockfd);
-			perror("connect");
+			perror("talker: socket");
 			continue;
 		}
 		break;
 	}
+	if (p == NULL)
+	{
+		fprintf(stderr, "talker: failed to bind socket\n");
+		exit(0);
+	}
+
 	Pkt pkt = packet.get_packet(network);
-	int size = sizeof(pkt);// + pkt.fields_updated * sizeof(UpdateField);
-	//cout << "size" << size;
-	sendto(sockfd, &pkt, size, 0, (sockaddr*) servinfo, sizeof(*servinfo));
+	int size = sizeof(pkt), b;
+	if((b = sendto(sockfd, &pkt, size, 0, p->ai_addr, p->ai_addrlen)) == -1)
+	{
+		perror("talker: sendto");
+		exit(1);
+	}
 	freeaddrinfo(servinfo);
 	close(sockfd);
-	string message = "Sending update " + int_to_str(id) + " -> "
+	string message = "Sent update " + int_to_str(id) + " -> "
 			+ int_to_str(server_id) + "\n"
-			+ details.get_distance_vector().to_string();
+			+ self.get_distance_vector().to_string();
 	cse4589_print_and_log((char*) message.c_str());
 }
 
@@ -275,79 +291,89 @@ void Server::send_updates()
 
 void Server::start()
 {
-	int status, sockfd;
-	addrinfo hints, *res, *p;
-	memset(&hints, 0, sizeof(hints));
+	ServerDetails self = network.find(id)->second;
+	struct addrinfo hints, *servinfo, *p;
+	int listener;
+	int rv;
+	int reuse = 1;
+	fd_set read_fds;
+
+	FD_ZERO(&master);
+	FD_ZERO(&read_fds);
+
+	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_INET;
 	hints.ai_socktype = SOCK_DGRAM;
-	hints.ai_socktype = AI_PASSIVE;
-
-	if ((status = getaddrinfo(ip.c_str(), int_to_str(port).c_str(), &hints,
-			&res)) != 0)
+	hints.ai_flags = AI_PASSIVE;
+	if ((rv = getaddrinfo(self.get_ip().c_str(),
+			int_to_str(self.get_port()).c_str(), &hints, &servinfo)) != 0)
 	{
 		string err(
 				"Error getting address information: "
-						+ string(gai_strerror(status)));
+						+ string(gai_strerror(rv)));
 		cse4589_print_and_log((char*) err.c_str());
 		exit(0);
 	}
-	for (p = res; p != NULL; p = p->ai_next)
+	for (p = servinfo; p != NULL; p = p->ai_next)
 	{
-		sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
-		if (sockfd == -1)
+		if ((listener = socket(p->ai_family, p->ai_socktype, p->ai_protocol))
+				== -1)
 		{
-			perror("socket");
+			perror("listener: socket");
 			continue;
 		}
-		status = bind(sockfd, p->ai_addr, p->ai_addrlen);
-		if (status < 0)
+		setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int));
+		if (bind(listener, p->ai_addr, p->ai_addrlen) == -1)
 		{
-			perror("bind");
-			close(sockfd);
+			close(listener);
+			perror("listener: bind");
 			continue;
 		}
 		break;
+		if (p == NULL)
+		{
+			//TODO log
+			fprintf(stderr, "listener: failed to bind socket\n");
+			exit(0);
+		}
+		freeaddrinfo(servinfo);
 	}
-	//TODO check the max no. of connections
-	listen(sockfd, 2);
-	freeaddrinfo(res);
-	fd_set read_fds;
-	FD_ZERO(&master);
-	FD_ZERO(&read_fds);
-	int listener = sockfd;
-	fdmax = sockfd;
-	FD_SET(sockfd, &master);
-	FD_SET(0, &master); //file descriptor for std. IO
-	print("> ");
+
+	FD_SET(0, &master); //IO
+	FD_SET(listener, &master);
+	fdmax = listener;
+	print("");
+	fflush(stdout);
+	timeval tv;
+	tv.tv_sec = timeout;
+	tv.tv_usec = 0;
 	while (true)
 	{
 		read_fds = master;
-		fflush(stdout);
-		timeval tv;
-		tv.tv_sec = timeout;
-		tv.tv_usec = 0;
-		int t = select(fdmax + 1, &read_fds, NULL, NULL, &tv);
-		if (t == 0)
-			send_updates();
-		if (t == -1)
+		int status = select(fdmax + 1, &read_fds, NULL, NULL, &tv);
+		if (status == -1)
 		{
 			perror("select");
-			exit(0);
+			exit(4);
 		}
-
+		if (status == 0)
+		{
+			tv.tv_sec = timeout;
+			tv.tv_usec = 0;
+			send_updates();
+			continue;
+		}
 		for (int i = 0; i <= fdmax; i++)
 		{
 			if (FD_ISSET(i, &read_fds))
 			{
-				if (i == listener)
-					receive_data(i);
-				else if (i == 0)
+				if (i == 0)
 				{
 					string cmd;
 					getline(cin, cmd);
 					command_execute(cmd);
 				}
-				else
+				else if (i == listener)
 				{
 					receive_data(i);
 				}
@@ -358,7 +384,10 @@ void Server::start()
 
 void Server::print(string line)
 {
-	cout << line << endl;
+	printf(line.c_str());
+	printf("\n");
+	printf(">");
+	fflush(stdout);
 }
 
 string Server::int_to_str(int num)

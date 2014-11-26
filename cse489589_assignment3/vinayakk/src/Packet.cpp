@@ -36,6 +36,7 @@ Packet::Packet(string ip, int port, DistanceVector vector)
 Packet::Packet(Pkt packet, map<int, ServerDetails> network)
 {
 	sockaddr_in addr;
+	addr.sin_addr.s_addr = packet.ip;
 	char str[INET_ADDRSTRLEN];
 	inet_ntop(AF_INET, &(addr.sin_addr), str, INET_ADDRSTRLEN);
 	ip = string(str);
@@ -49,11 +50,14 @@ Packet::Packet(Pkt packet, map<int, ServerDetails> network)
 		}
 	}
 	DistanceVector v;
-	for (int i = 0; i < packet.fields_updated; i++)
+	int num_servers = ntohs(packet.fields_updated);
+	for (int i = 0; i < num_servers; i++)
 	{
 		UpdateField field = packet.update_fields[i];
+		int sid = ntohs(field.update_id);
+		int scost = ntohs(field.cost);
 		//For next hop not specified : -1
-		v.add_cost(ntohs(field.update_id), ntohs(field.cost), -1);
+		v.add_cost(sid, scost, -1);
 	}
 	this->vector = v;
 }
@@ -72,12 +76,14 @@ Pkt Packet::get_packet(map<int, ServerDetails> network)
 	{
 		ServerDetails details = network.find(hosts[i])->second;
 		sockaddr_in add;
-		UpdateField field = packet.update_fields[i];
+		UpdateField field;
 		field.cost = htons(vector.get_cost(hosts[i]));
 		field.update_id = htons(hosts[i]);
 		inet_pton(AF_INET, details.get_ip().c_str(), &(add.sin_addr));
 		field.update_ip = add.sin_addr.s_addr;
 		field.update_port = htons(details.get_port());
+		field.padding = 0;
+		packet.update_fields[i] = field;
 	}
 	return packet;
 }

@@ -34,9 +34,9 @@ class Server
 	int id;
 	string ip;
 	int timeout;
-	map<int, ServerDetails> network;
-	int fdmax;
 	fd_set master;
+	int fdmax;
+	map<int, ServerDetails> network;
 	int updates_received;
 	void receive_data(int fd);
 	void send_data(int server_id);
