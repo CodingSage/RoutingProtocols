@@ -35,7 +35,6 @@ DistanceVector DistanceVector::clone()
 
 void DistanceVector::add_cost(int id, int cost)
 {
-	//TODO check host value
 	add_cost(id, cost, -1);
 }
 

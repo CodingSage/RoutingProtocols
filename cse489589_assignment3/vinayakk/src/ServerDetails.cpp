@@ -14,6 +14,7 @@ ServerDetails::ServerDetails()
 	neighbour = false;
 	timeout_count = 3;
 	update_received = false;
+	first_received = false;
 }
 
 ServerDetails::ServerDetails(std::string ip, int port)
@@ -23,6 +24,7 @@ ServerDetails::ServerDetails(std::string ip, int port)
 	this->neighbour = false;
 	timeout_count = 3;
 	update_received = false;
+	first_received = false;
 }
 
 ServerDetails::ServerDetails(std::string ip, int port, bool is_neighbour)
@@ -32,6 +34,7 @@ ServerDetails::ServerDetails(std::string ip, int port, bool is_neighbour)
 	this->neighbour = is_neighbour;
 	timeout_count = 3;
 	update_received = false;
+	first_received = false;
 }
 
 ServerDetails::~ServerDetails()
@@ -68,7 +71,7 @@ void ServerDetails::add_neighbour(int id, int cost)
 //gets assigned 0
 void ServerDetails::add_cost(int id, int cost)
 {
-	cost_table.add_cost(id, cost, 0);
+	cost_table.add_cost(id, cost);
 }
 
 //function used for DistanceVectors of the server itself, next node
@@ -131,9 +134,15 @@ void ServerDetails::set_timeout_count(int timeout)
 		return;
 	timeout_count = timeout;
 	if(timeout_count == 0)
-	{
 		neighbour = false;
-		string err = "Server " + ip + "timed out";
-		cse4589_print_and_log((char*)err.c_str());
-	}
+}
+
+bool ServerDetails::is_first_received()
+{
+	return first_received;
+}
+
+void ServerDetails::set_first_received(bool flag)
+{
+	first_received = flag;
 }

@@ -20,6 +20,7 @@ class ServerDetails
 	int port;
 	DistanceVector cost_table;
 	bool neighbour;
+	bool first_received;
 	int timeout_count;
 	bool update_received;
 public:
@@ -44,6 +45,8 @@ public:
 	void set_update_received(bool flag);
 	int get_timeout_count();
 	void set_timeout_count(int timeout);
+	bool is_first_received();
+	void set_first_received(bool flag);
 };
 
 #endif /* SERVERDETAILS_H_ */

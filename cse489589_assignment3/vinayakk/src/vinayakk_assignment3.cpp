@@ -90,7 +90,6 @@ int main(int argc, char **argv)
 	fclose(fopen(DUMPFILE, "wb"));
 
 	/*Start Here*/
-	cse4589_print_and_log("Starting server");
 	//TODO validations
 	string topology_path = "";
 	int update_time = 0;
@@ -107,11 +106,9 @@ int main(int argc, char **argv)
 		cse4589_print_and_log((char*) "Invalid arguments");
 		exit(0);
 	}
-	cse4589_print_and_log("Reading topology file");
 	map<int, ServerDetails> network;
 	int current_server;
 	parse_topology(topology_path, &network, &current_server);
-	cse4589_print_and_log("Successfully read topology file");
 	Server server(current_server, network, update_time);
 	server.start();
 	return 0;
