@@ -93,11 +93,14 @@ void Server::calculate_distance_vector()
 	for (map<int, ServerDetails>::iterator i = network.begin();
 			i != network.end(); i++)
 	{
+		int h = server.get_hop_id(i->first);
+		if(!network.find(h)->second.is_neighbour())
+			server.add_cost(i->first, INFINITE_COST, -1);
 		int min = INFINITE_COST;
 		for (map<int, ServerDetails>::iterator j = network.begin();
 				j != network.end(); j++)
 		{
-			if (j->first == this->id)
+			if (j->first == this->id || !j->second.is_neighbour())
 				continue;
 			int cost = server.get_cost(j->first)
 					+ j->second.get_cost(i->first);
@@ -110,8 +113,7 @@ void Server::calculate_distance_vector()
 	network.find(this->id)->second.set_distance_vector(server);
 	string message = "Updated distance vector for server " + int_to_str(id)
 			+ "\n" + server.to_string();
-	cse4589_print_and_log((char*) message.c_str());
-	print("");
+	print(message);
 }
 
 void Server::command_execute(string cmd)
@@ -124,7 +126,8 @@ void Server::command_execute(string cmd)
 		cmd_list.push_back(str);
 	transform(cmd_list[0].begin(), cmd_list[0].end(), cmd_list[0].begin(),
 			::tolower);
-	print(cmd + ":" + command_map(cmd_list));
+	string message = cmd + ":" + command_map(cmd_list);
+	cse4589_print_and_log((char*)message.c_str());
 }
 
 string Server::command_map(vector<string> cmd_list)
@@ -159,7 +162,7 @@ string Server::command_map(vector<string> cmd_list)
 	}
 	if (cmd == "packets")
 	{
-		cse4589_print_and_log((char*)int_to_str(updates_received).c_str());
+		cse4589_print_and_log("%d\n", updates_received);
 		updates_received = 0;
 		return "SUCCESS";
 	}
@@ -180,11 +183,13 @@ string Server::command_map(vector<string> cmd_list)
 	if (cmd == "disable" && cmd_list.size() == 2)
 	{
 		int cmdid = atoi(cmd_list[1].c_str());
-		map<int, ServerDetails>::iterator server = network.find(id);
+		map<int, ServerDetails>::iterator self = network.find(this->id);
+		map<int, ServerDetails>::iterator server = network.find(cmdid);
 		if(!server->second.is_neighbour())
-			return "SUCCESS";
+			return "Not a neighbor";
 		server->second.set_neighbour(false);
-		server->second.add_cost(cmdid, INFINITE_COST);
+		self->second.add_cost(cmdid, INFINITE_COST);
+		calculate_distance_vector();
 		return "SUCCESS";
 	}
 	if (cmd == "crash")
@@ -289,7 +294,9 @@ void Server::send_updates()
 			i->second.set_timeout_count(i->second.get_timeout_count() - 1);
 			if(i->second.get_timeout_count() == 0)
 			{
-				self.get_distance_vector().update_cost(i->first, INFINITE_COST);
+				DistanceVector v = self.get_distance_vector();
+				v.update_cost(i->first, INFINITE_COST);
+				self.set_distance_vector(v);
 				i->second.set_neighbour(false);
 				calculate_distance_vector();
 				print("Server " + int_to_str(i->first) + " timed out");
