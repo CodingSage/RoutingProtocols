@@ -11,11 +11,11 @@
 #include <map>
 #include <vector>
 #include <string>
-#include <stdint.h>
 
 #include "DistanceVector.h"
 #include "ServerDetails.h"
 #include "SocketLibs.h"
+#include "global.h"
 
 using namespace std;
 

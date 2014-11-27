@@ -9,10 +9,10 @@
 #define SERVERDETAILS_H_
 
 #include <string>
-#include <stdint.h>
 
 #include "DistanceVector.h"
 #include "logger.h"
+#include "global.h"
 
 class ServerDetails
 {

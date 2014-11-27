@@ -23,8 +23,7 @@
 #include "DistanceVector.h"
 #include "Packet.h"
 #include "logger.h"
-
-#define INFINITE_COST UINT16_MAX
+#include "global.h"
 
 using namespace std;
 
@@ -42,7 +41,6 @@ class Server
 	void send_data(int server_id);
 	void command_execute(string cmd);
 	string command_map(vector<string> cmd_list);
-	void update_cost(int id1, int id2, int cost);
 	void calculate_distance_vector();
 	Packet generate_packet();
 	void check_updates();

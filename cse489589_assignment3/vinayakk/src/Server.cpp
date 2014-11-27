@@ -94,7 +94,7 @@ void Server::calculate_distance_vector()
 			i != network.end(); i++)
 	{
 		int h = server.get_hop_id(i->first);
-		if(!network.find(h)->second.is_neighbour())
+		if(!network.find(h)->second.is_neighbour() && h != this->id)
 			server.add_cost(i->first, INFINITE_COST, -1);
 		int min = INFINITE_COST;
 		for (map<int, ServerDetails>::iterator j = network.begin();
@@ -135,9 +135,9 @@ string Server::command_map(vector<string> cmd_list)
 	string cmd = cmd_list[0];
 	if (cmd == "academic_integrity")
 	{
-		print("\“I have read and understood the course academic integrity "
-				"policy located at http://www.cse.buffalo.edu/faculty/dimitrio"
-				"/courses/cse4589_f14/index.html#integrity\”");
+		cse4589_print_and_log("I have read and understood the course"
+				" academic integrity policy located at http://www.cse.buffalo.edu"
+				"/faculty/dimitrio/courses/cse4589_f14/index.html#integrity");
 		return "SUCCESS";
 	}
 	if (cmd == "update" && cmd_list.size() == 4)
@@ -146,8 +146,13 @@ string Server::command_map(vector<string> cmd_list)
 		int id2 = atoi(cmd_list[2].c_str());
 		int cost = cmd_list[3] == "inf" ?
 				INFINITE_COST : atoi(cmd_list[3].c_str());
-		update_cost(id1, id2, cost);
-		Packet packet = generate_packet();
+		if(id1 != this->id)
+			return "id1 is not the current servers id";
+		if(!network.find(id2)->second.is_neighbour())
+			return "id2 is not a neighbor of the current server";
+		DistanceVector v = network.find(this->id)->second.get_distance_vector();
+		v.update_cost(id2, cost);
+		network.find(this->id)->second.set_distance_vector(v);
 		return "SUCCESS";
 	}
 	if (cmd == "step")
@@ -257,12 +262,6 @@ void Server::send_data(int server_id)
 			+ int_to_str(server_id);// + "\n"
 			//+ self.get_distance_vector().to_string();
 	print(message);
-}
-
-void Server::update_cost(int id1, int id2, int cost)
-{
-	DistanceVector vector = network.find(id1)->second.get_distance_vector();
-	vector.update_cost(id2, cost);
 }
 
 Packet Server::generate_packet()

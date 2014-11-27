@@ -14,7 +14,7 @@
 #include <string>
 #include <stdint.h>
 
-#define INFINITE_COST UINT16_MAX
+#include "global.h"
 
 using namespace std;
 
