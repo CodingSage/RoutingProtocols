@@ -32,6 +32,7 @@ Server::Server(int id, map<int, ServerDetails> network, int timeout)
 		int vhost = id == j->first ? id : -1;
 		i->second.add_if_not_exits(j->first, vcost, vhost);
 	}
+	neighbour_cost = i->second.get_distance_vector().clone();
 }
 
 void Server::receive_data(int fd)
@@ -46,7 +47,6 @@ void Server::receive_data(int fd)
 		perror("recvfrom");
 		return;
 	}
-	updates_received++;
 	Pkt pkt;
 	memcpy(&pkt, buffer, sizeof(pkt));
 	Packet packet(pkt, network);
@@ -59,12 +59,15 @@ void Server::receive_data(int fd)
 		{
 			senders_id = i->first;
 			i->second.set_update_received(true);
-			if(!i->second.is_first_received())
+			if (!i->second.is_first_received())
 				i->second.set_first_received(true);
 			break;
 		}
 	}
 	map<int, ServerDetails>::iterator i = network.find(senders_id);
+	if (!i->second.is_neighbour())
+		return;
+	updates_received++;
 	if (i == network.end())
 	{
 		ServerDetails detail(packet.get_sender_ip(), packet.get_sender_port(),
@@ -81,38 +84,49 @@ void Server::receive_data(int fd)
 	DistanceVector v = packet.get_distance_vector();
 	vector<int> h = v.get_all_hosts();
 	sort(h.begin(), h.end());
-	for(int i = 0; i < h.size(); i++)
+	for (int i = 0; i < h.size(); i++)
 		cse4589_print_and_log("%-15d%-15d\n", h[i], v.get_cost(h[i]));
 	print("");
 	calculate_distance_vector();
+	fflush(stdout);
 }
 
 void Server::calculate_distance_vector()
 {
-	DistanceVector server = network.find(this->id)->second.get_distance_vector();
+	DistanceVector vector;
 	for (map<int, ServerDetails>::iterator i = network.begin();
 			i != network.end(); i++)
 	{
-		int h = server.get_hop_id(i->first);
-		if(!network.find(h)->second.is_neighbour() && h != this->id)
-			server.add_cost(i->first, INFINITE_COST, -1);
+		int c = neighbour_cost.get_cost(i->first);
+		if (i->first == this->id)
+		{
+			vector.add_cost(i->first, 0, i->first);
+			continue;
+		}
+		else if (i->second.is_neighbour() && c != INFINITE_COST)
+			vector.add_cost(i->first, c, i->first);
+		else
+			vector.add_cost(i->first, INFINITE_COST);
 		int min = INFINITE_COST;
 		for (map<int, ServerDetails>::iterator j = network.begin();
 				j != network.end(); j++)
 		{
 			if (j->first == this->id || !j->second.is_neighbour())
 				continue;
-			int cost = server.get_cost(j->first)
-					+ j->second.get_cost(i->first);
-			if(cost > INFINITE_COST)
+			int cost = neighbour_cost.get_cost(j->first)
+					+ j->second.get_distance_vector().get_cost(i->first);
+			if (cost > INFINITE_COST)
 				cost = INFINITE_COST;
-			if (cost < min && cost < server.get_cost(i->first))
-				server.add_cost(i->first, cost, j->first);
+			if (cost < min)
+			{
+				min = cost;
+				vector.add_cost(i->first, cost, j->first);
+			}
 		}
 	}
-	network.find(this->id)->second.set_distance_vector(server);
+	network.find(this->id)->second.set_distance_vector(vector);
 	string message = "Updated distance vector for server " + int_to_str(id)
-			+ "\n" + server.to_string();
+			+ "\n" + vector.to_string();
 	print(message);
 }
 
@@ -127,7 +141,8 @@ void Server::command_execute(string cmd)
 	transform(cmd_list[0].begin(), cmd_list[0].end(), cmd_list[0].begin(),
 			::tolower);
 	string message = cmd + ":" + command_map(cmd_list);
-	cse4589_print_and_log((char*)message.c_str());
+	cse4589_print_and_log((char*) message.c_str());
+	fflush(stdout);
 }
 
 string Server::command_map(vector<string> cmd_list)
@@ -136,8 +151,9 @@ string Server::command_map(vector<string> cmd_list)
 	if (cmd == "academic_integrity")
 	{
 		cse4589_print_and_log("I have read and understood the course"
-				" academic integrity policy located at http://www.cse.buffalo.edu"
-				"/faculty/dimitrio/courses/cse4589_f14/index.html#integrity");
+					" academic integrity policy located at http://www.cse.buffalo.edu"
+					"/faculty/dimitrio/courses/cse4589_f14/index.html#integrity");
+		fflush(stdout);
 		return "SUCCESS";
 	}
 	if (cmd == "update" && cmd_list.size() == 4)
@@ -146,12 +162,13 @@ string Server::command_map(vector<string> cmd_list)
 		int id2 = atoi(cmd_list[2].c_str());
 		int cost = cmd_list[3] == "inf" ?
 				INFINITE_COST : atoi(cmd_list[3].c_str());
-		if(id1 != this->id)
+		if (id1 != this->id)
 			return "id1 is not the current servers id";
-		if(!network.find(id2)->second.is_neighbour())
+		if (!network.find(id2)->second.is_neighbour())
 			return "id2 is not a neighbor of the current server";
 		DistanceVector v = network.find(this->id)->second.get_distance_vector();
 		v.update_cost(id2, cost);
+		neighbour_cost.update_cost(id2, cost);
 		network.find(this->id)->second.set_distance_vector(v);
 		return "SUCCESS";
 	}
@@ -169,6 +186,7 @@ string Server::command_map(vector<string> cmd_list)
 	{
 		cse4589_print_and_log("%d\n", updates_received);
 		updates_received = 0;
+		fflush(stdout);
 		return "SUCCESS";
 	}
 	if (cmd == "display")
@@ -183,6 +201,7 @@ string Server::command_map(vector<string> cmd_list)
 			int h_cost = detail.get_cost(hosts[i]);
 			cse4589_print_and_log("%-15d%-15d%-15d\n", h_id, h_hop, h_cost);
 		}
+		fflush(stdout);
 		return "SUCCESS";
 	}
 	if (cmd == "disable" && cmd_list.size() == 2)
@@ -190,10 +209,11 @@ string Server::command_map(vector<string> cmd_list)
 		int cmdid = atoi(cmd_list[1].c_str());
 		map<int, ServerDetails>::iterator self = network.find(this->id);
 		map<int, ServerDetails>::iterator server = network.find(cmdid);
-		if(!server->second.is_neighbour())
+		if (!server->second.is_neighbour())
 			return "Not a neighbor";
 		server->second.set_neighbour(false);
 		self->second.add_cost(cmdid, INFINITE_COST);
+		neighbour_cost.update_cost(cmdid, INFINITE_COST);
 		calculate_distance_vector();
 		return "SUCCESS";
 	}
@@ -227,8 +247,8 @@ void Server::send_data(int server_id)
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_DGRAM;
-	if ((rv = getaddrinfo(send_to.get_ip().c_str(), int_to_str(send_to.get_port()).c_str()
-			, &hints, &servinfo)) != 0)
+	if ((rv = getaddrinfo(send_to.get_ip().c_str(),
+			int_to_str(send_to.get_port()).c_str(), &hints, &servinfo)) != 0)
 	{
 		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
 		exit(0);
@@ -251,7 +271,7 @@ void Server::send_data(int server_id)
 
 	Pkt pkt = packet.get_packet(network);
 	int size = sizeof(pkt), b;
-	if((b = sendto(sockfd, &pkt, size, 0, p->ai_addr, p->ai_addrlen)) == -1)
+	if ((b = sendto(sockfd, &pkt, size, 0, p->ai_addr, p->ai_addrlen)) == -1)
 	{
 		perror("talker: sendto");
 		exit(1);
@@ -259,7 +279,7 @@ void Server::send_data(int server_id)
 	freeaddrinfo(servinfo);
 	close(sockfd);
 	string message = "Sent update " + int_to_str(id) + " -> "
-			+ int_to_str(server_id);// + "\n"
+			+ int_to_str(server_id); // + "\n"
 			//+ self.get_distance_vector().to_string();
 	print(message);
 }
@@ -281,7 +301,7 @@ void Server::send_updates()
 		if (i->first == this->id || !i->second.is_neighbour())
 			continue;
 		send_data(i->first);
-		if(!i->second.is_first_received())
+		if (!i->second.is_first_received())
 			continue;
 		if (i->second.update_recieved())
 		{
@@ -291,10 +311,11 @@ void Server::send_updates()
 		else
 		{
 			i->second.set_timeout_count(i->second.get_timeout_count() - 1);
-			if(i->second.get_timeout_count() == 0)
+			if (i->second.get_timeout_count() == 0)
 			{
 				DistanceVector v = self.get_distance_vector();
 				v.update_cost(i->first, INFINITE_COST);
+				neighbour_cost.update_cost(i->first, INFINITE_COST);
 				self.set_distance_vector(v);
 				i->second.set_neighbour(false);
 				calculate_distance_vector();
@@ -327,6 +348,7 @@ void Server::start()
 				"Error getting address information: "
 						+ string(gai_strerror(rv)));
 		cse4589_print_and_log((char*) err.c_str());
+		fflush(stdout);
 		exit(0);
 	}
 	for (p = servinfo; p != NULL; p = p->ai_next)

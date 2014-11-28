@@ -108,6 +108,7 @@ void Packet::add_updated_fields(DistanceVector vector)
 	this->vector = vector;
 }
 
+//returns distance vector for the server with the current server detauks
 DistanceVector Packet::get_distance_vector()
 {
 	return vector;

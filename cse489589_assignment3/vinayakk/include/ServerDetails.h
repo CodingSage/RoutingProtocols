@@ -14,6 +14,7 @@
 #include "logger.h"
 #include "global.h"
 
+//[PA3] Routing Table Start
 class ServerDetails
 {
 	std::string ip;
@@ -48,5 +49,6 @@ public:
 	bool is_first_received();
 	void set_first_received(bool flag);
 };
+//[PA3] Routing Table End
 
 #endif /* SERVERDETAILS_H_ */

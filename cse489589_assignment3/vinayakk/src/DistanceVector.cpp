@@ -60,6 +60,17 @@ void DistanceVector::update_cost(int id, int cost)
 	if (i == cost_map.end())
 		return;
 	i->second = cost;
+	if(cost == INFINITE_COST)
+	{
+		map<int, int>::iterator j = next_hop.find(id);
+		if(j == next_hop.end())
+		{
+			pair<int, int> p(id, -1);
+			next_hop.insert(p);
+		}
+		else
+			j->second = -1;
+	}
 }
 
 int DistanceVector::get_cost(int id)

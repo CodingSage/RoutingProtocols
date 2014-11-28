@@ -35,6 +35,7 @@ class Server
 	int timeout;
 	fd_set master;
 	int fdmax;
+	DistanceVector neighbour_cost;
 	map<int, ServerDetails> network;
 	int updates_received;
 	void receive_data(int fd);

@@ -19,6 +19,7 @@
 
 using namespace std;
 
+//[PA3] Update Packet Start
 struct UpdateField
 {
 	uint32_t update_ip;
@@ -35,6 +36,7 @@ struct Pkt
 	uint32_t ip;
 	UpdateField update_fields[5];
 };
+//[PA3] Update Packet End
 
 class Packet
 {
